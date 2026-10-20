@@ -55,77 +55,43 @@ if "feature_inputs" not in st.session_state:
         col: FEATURE_DEFINITIONS[col]["default"] for col in INPUT_COLUMNS
     }
 
-# ----------------- SIDEBAR: CONFIGURATION -----------------
-st.sidebar.title("⚙️ Databricks Config")
-
-# Load current .env config
-default_cfg = get_databricks_config()
-
-with st.sidebar.expander("Connection Settings", expanded=not bool(default_cfg.token)):
-    st.markdown("Credentials are automatically loaded from `.env`. You can also override them here:")
-    sidebar_host = st.text_input(
-        "Databricks Host",
-        value=default_cfg.host,
-        placeholder="https://<workspace-id>.cloud.databricks.com",
-        help="Workspace URL (e.g., https://adb-xxxx.azuredatabricks.net)",
-    )
-    sidebar_endpoint = st.text_input(
-        "Serving Endpoint Name",
-        value=default_cfg.endpoint_name,
-        placeholder="wine-quality-endpoint",
-        help="Endpoint name configured in Databricks Model Serving",
-    )
-    sidebar_token = st.text_input(
-        "Access Token (PAT)",
-        value=default_cfg.token,
-        type="password",
-        placeholder="dapi...",
-        help="Databricks Personal Access Token",
-    )
-    sidebar_serving_url = st.text_input(
-        "Direct Serving URL (Optional)",
-        value=default_cfg.serving_url or "",
-        placeholder="https://.../serving-endpoints/.../invocations",
-        help="Overrides Host + Endpoint Name if specified",
-    )
-
-active_config = get_databricks_config(
-    override_host=sidebar_host,
-    override_endpoint_name=sidebar_endpoint,
-    override_token=sidebar_token,
-    override_serving_url=sidebar_serving_url,
-)
-
+# ----------------- CONFIGURATION (LOADED VIA SECRETS / .ENV) -----------------
+active_config = get_databricks_config()
 is_config_valid, config_err = active_config.validate()
 
-# Status indicator
+# ----------------- SIDEBAR -----------------
+st.sidebar.title("🍷 Model Dashboard")
+st.sidebar.markdown(
+    """
+    **Architecture:**
+    - **Engine:** Apache Spark ML
+    - **Host:** Databricks Model Serving
+    - **Inference Mode:** Real-time Serverless
+    """
+)
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("Connection Status")
 if is_config_valid:
-    st.sidebar.success("Ready to invoke endpoint")
-    st.sidebar.caption(f"**Target URL:** `{active_config.endpoint_url}`")
-else:
-    st.sidebar.warning("Incomplete Configuration")
-    st.sidebar.info("Please fill in `.env` or set the sidebar fields above.")
-
-# Test Endpoint button
-if is_config_valid:
-    if st.sidebar.button("Test Connection"):
-        with st.sidebar.status("Connecting to Databricks..."):
+    st.sidebar.success("🟢 Connected to Databricks")
+    if st.sidebar.button("Test Connection", use_container_width=True):
+        with st.sidebar.status("Testing endpoint connection..."):
             try:
-                # Test with user's first sample
                 test_sample = [list(PRESET_SAMPLES["Sample 1 (Typical Medium Red, ~5.2)"].values())]
                 test_preds = call_wine_quality_model(
                     data=test_sample,
                     endpoint_url=active_config.endpoint_url,
                     token=active_config.token,
                 )
-                st.sidebar.success(f"Connection OK! Test prediction: {test_preds[0]}")
+                st.sidebar.success(f"Endpoint active! Test prediction: {test_preds[0]}")
             except Exception as e:
-                st.sidebar.error(f"Connection failed: {e}")
+                st.sidebar.error(f"Connection error: {e}")
+else:
+    st.sidebar.error("🔴 Model Secrets Not Configured")
+    st.sidebar.caption("Please configure `DATABRICKS_SERVING_URL` and `DATABRICKS_TOKEN` in Streamlit secrets or `.env`.")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Spark ML Model • Databricks Serving • `dataframe_split` API")
+st.sidebar.caption("Apache Spark ML • Databricks Serving")
 
 # ----------------- MAIN INTERFACE -----------------
 st.markdown('<div class="main-header">🍷 Wine Quality Prediction</div>', unsafe_allow_html=True)
@@ -312,9 +278,8 @@ with tab_single:
                     with st.expander("🔍 View Request & Response JSON"):
                         req_payload = {
                             "dataframe_split": {
-                                "index": [0],
-                                "columns": INPUT_COLUMNS,
-                                "data": [sample_values],
+                                "columns": ["features"],
+                                "data": [[sample_values]],
                             }
                         }
                         resp_payload = {"predictions": [score]}

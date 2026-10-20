@@ -35,24 +35,35 @@ class DatabricksConfig:
         return True, ""
 
 
-def get_databricks_config(
-    override_host: Optional[str] = None,
-    override_endpoint_name: Optional[str] = None,
-    override_token: Optional[str] = None,
-    override_serving_url: Optional[str] = None,
-) -> DatabricksConfig:
-    """Retrieve Databricks configuration from environment or optional overrides."""
-    # Reload environment to catch runtime .env updates
+def _get_secret_or_env(key: str, default: str = "") -> str:
+    """Retrieve configuration from Streamlit secrets or environment variables."""
+    # Check Streamlit Cloud secrets first
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and key in st.secrets:
+            val = str(st.secrets[key]).strip()
+            if val:
+                return val
+    except Exception:
+        pass
+
+    # Fallback to .env / os.environ
+    val = os.getenv(key, default)
+    return (val or "").strip()
+
+
+def get_databricks_config() -> DatabricksConfig:
+    """Retrieve Databricks configuration from Streamlit secrets or .env file."""
     load_dotenv(override=True)
 
-    host = override_host or os.getenv("DATABRICKS_HOST", "")
-    endpoint_name = override_endpoint_name or os.getenv("DATABRICKS_ENDPOINT_NAME", "")
-    token = override_token or os.getenv("DATABRICKS_TOKEN", "")
-    serving_url = override_serving_url or os.getenv("DATABRICKS_SERVING_URL", "")
+    host = _get_secret_or_env("DATABRICKS_HOST", "")
+    endpoint_name = _get_secret_or_env("DATABRICKS_ENDPOINT_NAME", "")
+    token = _get_secret_or_env("DATABRICKS_TOKEN", "")
+    serving_url = _get_secret_or_env("DATABRICKS_SERVING_URL", "")
 
     return DatabricksConfig(
-        host=host.strip(),
-        endpoint_name=endpoint_name.strip(),
-        token=token.strip(),
-        serving_url=serving_url.strip() if serving_url else None,
+        host=host,
+        endpoint_name=endpoint_name,
+        token=token,
+        serving_url=serving_url if serving_url else None,
     )

@@ -18,7 +18,7 @@ def call_wine_quality_model(
     endpoint_url: str,
     token: str,
     columns: Optional[List[str]] = None,
-    timeout: int = 30,
+    timeout: Optional[int] = None,
 ) -> List[float]:
     """
     Invoke Databricks Model Serving endpoint with wine quality feature vectors.
@@ -44,17 +44,20 @@ def call_wine_quality_model(
 
     cols = columns if columns is not None else INPUT_COLUMNS
 
-    payload = {
-        "dataframe_split": {
-            "index": list(range(len(data))),
-            "columns": cols,
-            "data": data,
-        }
-    }
-
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
+    }
+
+    # Spark ML models logged with VectorAssembler require a single 'features' vector column:
+    # {"columns": ["features"], "data": [[[val1, val2, ...]]]}
+    # Other models may accept the raw feature columns:
+    # {"columns": ["fixed_acidity", ...], "data": [[val1, val2, ...]]}
+    payload = {
+        "dataframe_split": {
+            "columns": ["features"],
+            "data": [[row] for row in data],
+        }
     }
 
     try:
@@ -64,8 +67,10 @@ def call_wine_quality_model(
             json=payload,
             timeout=timeout,
         )
+
     except requests.exceptions.Timeout:
-        raise DatabricksClientError(f"Request timed out after {timeout} seconds when calling {endpoint_url}")
+        timeout_str = f" after {timeout}s" if timeout else ""
+        raise DatabricksClientError(f"Request timed out{timeout_str} when calling {endpoint_url}")
     except requests.exceptions.ConnectionError as ce:
         raise DatabricksClientError(f"Connection error reaching Databricks endpoint: {ce}")
     except requests.exceptions.RequestException as re:
